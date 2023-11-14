@@ -242,7 +242,35 @@ class UNet(nn.Module):
         return logits
 
 
-def train_model(model, epochs, batch_size, optimizer, loss_fn):
+def accuracy(outputs, targets):
+    # Assuming binary segmentation
+    preds = torch.sigmoid(outputs)
+    preds = (preds > 0.5).float()  # Convert to binary predictions
+    correct = (preds == targets).sum().item()
+    total = targets.numel()
+    acc = correct / total
+    return acc
+def save_model(model, optimizer, epoch, loss, accuracy, save_path):
+    state = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+        'accuracy': accuracy
+    }
+    torch.save(state, save_path)
+    print(f'Model saved at {save_path}')
+
+def load_model(model, optimizer, load_path):
+    checkpoint = torch.load(load_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+    accuracy = checkpoint['accuracy']
+    print(f'Model loaded from {load_path}')
+    return model, optimizer, epoch, loss, accuracy
+def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None):
     if not torch.cuda.is_available():
         print("CUDA NOT AVAILABLE!!!!")
     
@@ -252,13 +280,15 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn):
     train_steps = math.ceil(len(train_set) / batch_size)
     train_losses = []
     val_losses = []
+    train_accuracies = []
+    val_accuracies = []
     
     for epoch in range(1, epochs + 1):
         epoch_loss = 0
-        step = 1
+        epoch_acc = 0
         model.train()
         
-        for inputs, masks in train_loader:
+        for step, (inputs, masks) in enumerate(train_loader, 1):  # Start counting steps from 1
             print(f"Epoch: {epoch}, step: {step} out of {train_steps}.")
             inputs, masks = inputs.to(device), masks.to(device)
             optimizer.zero_grad()
@@ -268,23 +298,34 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn):
             batch_loss.backward()
             optimizer.step()
             epoch_loss += batch_loss.item()
-            step += 1
             
+            batch_acc = accuracy(output, masks)
+            epoch_acc += batch_acc
+        
+        epoch_acc /= train_steps
+        train_accuracies.append(epoch_acc)
         train_losses.append(epoch_loss / batch_size)
         
         train_preds, train_targs = [], []
         with torch.no_grad():
             model.eval()
             val_loss = 0
+            val_acc = 0
             for inputs, masks in val_loader:
                 output = model(inputs)
                 val_loss += loss_fn(output.squeeze(), masks).item()
+                
+                batch_acc = accuracy(output, masks)
+                val_acc += batch_acc
             
+            val_acc /= len(val_loader)
+            val_accuracies.append(val_acc)
             val_losses.append(val_loss / batch_size)
-            
-        print(f"Epoch train loss: {train_losses[-1]}")
-        print(f"Epoch validation loss: {val_losses[-1]}")
-
+        
+        if save_path is not None:
+            save_model(model, optimizer, epoch, epoch_loss, epoch_acc, save_path)
+        print(f"Epoch train loss: {train_losses[-1]}, train accuracy: {train_accuracies[-1]}")
+        print(f"Epoch validation loss: {val_losses[-1]}, validation accuracy: {val_accuracies[-1]}")
 
 # In[20]:
 
@@ -292,5 +333,6 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn):
 model = UNet()
 optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-4)
 loss_fn = nn.BCEWithLogitsLoss()
-train_model(model, 5, 16, optimizer, loss_fn)
+save_path = 'model.pth'
+train_model(model, 1, 16, optimizer, loss_fn,save_path)
 
