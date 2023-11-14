@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader, random_split
+from torch.optim.lr_scheduler import StepLR
+
 
 
 # Here we have semantic (or class) segmentation: we paint each front door as dark green, even if we have 5 or just 1 in the image (as opposed to instance segmentation, where we would assign a different color to each front door object/instance).
@@ -140,9 +142,9 @@ generator_seed = torch.Generator().manual_seed(0)
 train_set, temp_set = random_split(dataset, [train_size, val_size + test_size], generator=generator_seed)
 val_set, test_set = random_split(temp_set, [val_size, test_size], generator=generator_seed)
 
-train_loader = DataLoader(train_set, batch_size=16, shuffle=True)
+train_loader = DataLoader(train_set, batch_size=16, shuffle=False)
 val_loader = DataLoader(val_set, batch_size=16, shuffle=False)
-train_loader = DataLoader(test_set, batch_size=16, shuffle=False)
+test_loader = DataLoader(test_set, batch_size=16, shuffle=False)
 
 
 
@@ -164,10 +166,10 @@ class ConvBlock(nn.Module):
         super().__init__()
         self.conv_block = nn.Sequential(
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
-            # nn.BatchNorm2d(mid_channels),
+            nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            # nn.BatchNorm2d(out_channels),
+            nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
 
@@ -219,24 +221,24 @@ class UNet(nn.Module):
         
         self.inc = (ConvBlock(3, 64, 64)) 
         self.down1 = (Down(64, 128)) 
-#         self.down2 = (Down(128, 256)) 
-#         self.down3 = (Down(256, 512)) 
-#         self.down4 = (Down(512, 1024)) 
-#         self.up1 = (Up(1024, 512)) 
-#         self.up2 = (Up(512, 256))
-#         self.up3 = (Up(256, 128))
+        self.down2 = (Down(128, 256)) 
+        self.down3 = (Down(256, 512)) 
+        self.down4 = (Down(512, 1024)) 
+        self.up1 = (Up(1024, 512)) 
+        self.up2 = (Up(512, 256))
+        self.up3 = (Up(256, 128))
         self.up4 = (Up(128, 64))
         self.outc = (OutConv(64, 1))
 
     def forward(self, x):
         x1 = self.inc(x) # x1 HxW: 256x256
         x2 = self.down1(x1) # x2 HxW: 128x128
-        # x3 = self.down2(x2) # x3 HxW: 64x64
-        # x4 = self.down3(x3) # x4 HxW: 32x32
-        # x5 = self.down4(x4) # x5 HxW: 16x16
-        # x = self.up1(x5, x4) # up(x5) gives 32x32, concat with x4, HxW remains 32x32 and the channels are added
-        # x = self.up2(x, x3)
-        # x = self.up3(x, x2)
+        x3 = self.down2(x2) # x3 HxW: 64x64
+        x4 = self.down3(x3) # x4 HxW: 32x32
+        x5 = self.down4(x4) # x5 HxW: 16x16
+        x = self.up1(x5, x4) # up(x5) gives 32x32, concat with x4, HxW remains 32x32 and the channels are added
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
         x = self.up4(x2, x1) # x = self.up4(x, x1)
         logits = self.outc(x)
         return logits
@@ -270,14 +272,14 @@ def load_model(model, optimizer, load_path):
     accuracy = checkpoint['accuracy']
     print(f'Model loaded from {load_path}')
     return model, optimizer, epoch, loss, accuracy
-def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None):
+def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None,scheduler=None,):
     if not torch.cuda.is_available():
         print("CUDA NOT AVAILABLE!!!!")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     
-    train_steps = math.ceil(len(train_set) / batch_size)
+    train_steps = len(train_loader)
     train_losses = []
     val_losses = []
     train_accuracies = []
@@ -287,8 +289,8 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None):
         epoch_loss = 0
         epoch_acc = 0
         model.train()
-        
-        for step, (inputs, masks) in enumerate(train_loader, 1):  # Start counting steps from 1
+        train_loader_enum = enumerate(train_loader, 1)
+        for step, (inputs, masks) in train_loader_enum:  # Start counting steps from 1
             print(f"Epoch: {epoch}, step: {step} out of {train_steps}.")
             inputs, masks = inputs.to(device), masks.to(device)
             optimizer.zero_grad()
@@ -297,6 +299,8 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None):
             batch_loss = loss_fn(output.squeeze(), masks)
             batch_loss.backward()
             optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
             epoch_loss += batch_loss.item()
             
             batch_acc = accuracy(output, masks)
@@ -332,7 +336,8 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None):
 
 model = UNet()
 optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-4)
+scheduler = StepLR(optimizer, step_size=5, gamma=0.1)
 loss_fn = nn.BCEWithLogitsLoss()
 save_path = 'model.pth'
-train_model(model, 1, 16, optimizer, loss_fn,save_path)
+train_model(model, 1, 16, optimizer, loss_fn,save_path,scheduler)
 
