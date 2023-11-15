@@ -294,7 +294,7 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None,sch
             print(f"Epoch: {epoch}, step: {step} out of {train_steps}.")
             inputs, masks = inputs.to(device), masks.to(device)
             optimizer.zero_grad()
-            output = model(inputs)
+            output = model(inputs.to(device))
             
             batch_loss = loss_fn(output.squeeze(), masks)
             batch_loss.backward()
@@ -316,10 +316,10 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None,sch
             val_loss = 0
             val_acc = 0
             for inputs, masks in val_loader:
-                output = model(inputs)
-                val_loss += loss_fn(output.squeeze(), masks).item()
+                output = model(inputs.to(device))
+                val_loss += loss_fn(output.squeeze(), masks.to(device)).item()
                 
-                batch_acc = accuracy(output, masks)
+                batch_acc = accuracy(output.squeeze(), masks.to(device))
                 val_acc += batch_acc
             
             val_acc /= len(val_loader)
@@ -332,12 +332,12 @@ def train_model(model, epochs, batch_size, optimizer, loss_fn,save_path=None,sch
         print(f"Epoch validation loss: {val_losses[-1]}, validation accuracy: {val_accuracies[-1]}")
 
 # In[20]:
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
-model = UNet()
+model = UNet().to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-4)
 scheduler = StepLR(optimizer, step_size=5, gamma=0.1)
 loss_fn = nn.BCEWithLogitsLoss()
 save_path = 'model.pth'
-train_model(model, 1, 16, optimizer, loss_fn,save_path,scheduler)
+train_model(model, 4, 16, optimizer, loss_fn,save_path,scheduler)
 
