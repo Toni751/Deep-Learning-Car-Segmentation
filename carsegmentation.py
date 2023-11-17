@@ -8,14 +8,13 @@ from torch.utils.data import TensorDataset, DataLoader, random_split
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 64
+ARRAYS_FOLDER = './arrays_preprocessed/'
 
 black_5_doors_arrays = {}
 orange_3_doors_arrays = {}
 photo_arrays = {}
-ARRAYS_FOLDER = './arrays/'
-npy_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.endswith('.npy')]
 
-# Categorize the arrays based on the file names
+npy_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.endswith('.npy')]
 for file in npy_files:
     file_path = os.path.join(ARRAYS_FOLDER, file)
     
@@ -25,8 +24,8 @@ for file in npy_files:
     sample_tensor = sample_tensor.permute(2, 0, 1)  # Reshaping from HxWxC to CxHxW
     
     # Extract the image data and target values
-    image_data = sample_tensor[0:3,:,:]  # First 3 channels are the image data
-    target = sample_tensor[3,:,:]  # Fourth channel contains target values
+    image_data = sample_tensor[0:3, :, :]  # First 3 channels are the image data
+    target = sample_tensor[3:6, :, :]  # Last 3 channels contain the target value
     
     if file.startswith('black_5_doors'):
         black_5_doors_arrays[file] = {'image_data': image_data, 'target': target}       
@@ -37,8 +36,6 @@ for file in npy_files:
         
 image_data_list = []
 target_list = []
-
-# Loop through the list of dictionaries and extract image_data
 for data_dict in black_5_doors_arrays:
     image_data = black_5_doors_arrays[data_dict]['image_data']
     target_data = black_5_doors_arrays[data_dict]['target']
@@ -121,7 +118,7 @@ class Up(nn.Module):
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()
-        # the BCEWithLogitsLoss automatically wraps this in a sigmoid, that's why we don't do it here
+        # the CrossEntropyLoss automatically wraps this in a LogSoftmax, that's why we don't do it here
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
     def forward(self, x):
@@ -141,7 +138,7 @@ class UNet(nn.Module):
         self.up2 = (Up(512, 256))
         self.up3 = (Up(256, 128))
         self.up4 = (Up(128, 64))
-        self.outc = (OutConv(64, 1))
+        self.outc = (OutConv(64, 3))
 
     def forward(self, x):
         x1 = self.inc(x)  # x1 HxW: 256x256
@@ -158,14 +155,15 @@ class UNet(nn.Module):
 
 
 # TODO: maybe here we want to use the dice coefficient instead? (torchmetrics.Dice ?)
+# TODO: this needs a fix
 def accuracy(outputs, targets):
     # Assuming binary segmentation
-    preds = torch.sigmoid(outputs)
-    preds = (preds > 0.5).float()  # Convert to binary predictions
-    correct = (preds == targets).sum().item()
-    total = targets.numel()
-    acc = correct / total
-    return acc
+    # preds = torch.softmax(outputs)
+    # preds = (preds == preds.max()).float()  # Convert to binary predictions
+    # correct = (preds == targets).sum().item()
+    # total = targets.numel()
+    # acc = correct / total
+    return 1
 
 
 def save_model(model, optimizer, save_path):
@@ -185,24 +183,22 @@ def load_model(model, optimizer, load_path):
     return model, optimizer
 
 
-def evaluate_validation_set(model, device, loss_fn):
-    val_steps = math.ceil(len(val_set) / BATCH_SIZE)
-
+def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
     with torch.no_grad():
         model.eval()
-        val_loss = 0
-        val_acc = 0
-        for inputs, masks in val_loader:
+        set_loss = 0
+        set_acc = 0
+        for inputs, masks in loader:
             inputs, masks = inputs.to(device), masks.to(device)
             output = model(inputs)
-            val_loss += loss_fn(output.squeeze(), masks).item()
+            set_loss += loss_fn(output, masks).item()
 
-            batch_acc = accuracy(output.squeeze(), masks.to(device))
-            val_acc += batch_acc
+            batch_acc = accuracy(output, masks.to(device))
+            set_acc += batch_acc
 
-        val_acc /= len(val_loader)
-        val_loss /= val_steps
-        return val_loss, val_acc
+        set_acc /= len(loader)
+        set_loss /= math.ceil(set_length / BATCH_SIZE)
+        return set_loss, set_acc
 
 
 def train_model(model, epochs, optimizer, loss_fn, save_path):
@@ -231,7 +227,7 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
             optimizer.zero_grad()
             output = model(inputs)
             
-            batch_loss = loss_fn(output.squeeze(), masks)
+            batch_loss = loss_fn(output, masks)
             batch_loss.backward()
             optimizer.step()
             epoch_loss += batch_loss.item()
@@ -243,7 +239,7 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
         train_accuracies.append(epoch_acc)
         train_losses.append(epoch_loss / train_steps)
 
-        val_loss, val_acc = evaluate_validation_set(model, device, loss_fn)
+        val_loss, val_acc = evaluate_val_test_set(model, device, loss_fn, len(val_set), val_loader)
         val_losses.append(val_loss)
         val_accuracies.append(val_acc)
 
@@ -253,10 +249,13 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     if save_path is not None:
         save_model(model, optimizer, save_path)
 
+    test_loss, test_acc = evaluate_val_test_set(model, device, loss_fn, len(test_set), test_loader)
+    print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
+
 
 model = UNet()
 optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-4)
-loss_fn = nn.BCEWithLogitsLoss()
+loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
-train_model(model, 1, optimizer, loss_fn, save_path)
+train_model(model, 5, optimizer, loss_fn, save_path)
 
