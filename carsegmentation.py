@@ -7,8 +7,8 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader, random_split
 
 print("Started running car segmentation model.")
-BATCH_SIZE = 64
-ARRAYS_FOLDER = './arrays_preprocessed/'
+BATCH_SIZE = 32
+ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
 
 black_5_doors_arrays = {}
 orange_3_doors_arrays = {}
@@ -27,11 +27,11 @@ for file in npy_files:
     image_data = sample_tensor[0:3, :, :]  # First 3 channels are the image data
     target = sample_tensor[3:6, :, :]  # Last 3 channels contain the target value
     
-    if file.startswith('black_5_doors'):
+    if 'black_5_doors' in file:
         black_5_doors_arrays[file] = {'image_data': image_data, 'target': target}       
-    elif file.startswith('orange_3_doors'):
+    elif file.startswith('rotated_orange_3_doors'):
         orange_3_doors_arrays[file] = {'image_data': image_data, 'target': target}
-    elif file.startswith('photo_'):
+    elif file.startswith('rotated_photo_'):
         photo_arrays[file] = {'image_data': image_data, 'target': target}
         
 image_data_list = []
@@ -114,7 +114,6 @@ class Up(nn.Module):
         x = torch.cat([x2, x1], dim=1)  # x1 and x2 need to have the same number of rows, I think
         return self.conv(x)
 
-
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()
@@ -157,12 +156,6 @@ class UNet(nn.Module):
 # TODO: maybe here we want to use the dice coefficient instead? (torchmetrics.Dice ?)
 # TODO: this needs a fix
 def accuracy(outputs, targets):
-    # Assuming binary segmentation
-    # preds = torch.softmax(outputs)
-    # preds = (preds == preds.max()).float()  # Convert to binary predictions
-    # correct = (preds == targets).sum().item()
-    # total = targets.numel()
-    # acc = correct / total
     return 1
 
 

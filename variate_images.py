@@ -55,9 +55,10 @@ def replace_black_background(image_data, background_image_path):
     return image_data
 
 
-
 def preprocess_input():
     npy_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.startswith('black_5') and f.endswith('.npy')]
+    photo_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.startswith('photo') and f.endswith('.npy')]
+    orange_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.startswith('orange') and f.endswith('.npy')]
 
     step = 0
     for file in npy_files:
@@ -83,10 +84,67 @@ def preprocess_input():
         rotated_image_data = rotate(image_data, random_angle, reshape=False)
         rotated_target = rotate(target, random_angle, reshape=False)
 
-        # Save the rotated image and target
-        rotated_file_path = os.path.join(ROTATED_FOLDER, file)
+        # Save the original and rotated images and targets
+        original_file_path = os.path.join(ROTATED_FOLDER, f"original_{file}")
+        rotated_file_path = os.path.join(ROTATED_FOLDER, f"rotated_{file}")
+
+        np.save(original_file_path, np.concatenate([image_data, target], axis=-1))
         np.save(rotated_file_path, np.concatenate([rotated_image_data, rotated_target], axis=-1))
 
+        # Delete the original file
+        os.remove(file_path)
+
+    for file in photo_files:
+        step += 1
+        if step % 100 == 0:
+            print(step)
+
+        file_path = os.path.join(ARRAYS_FOLDER, file)
+        sample_tensor = np.load(file_path)
+
+        image_data = sample_tensor[:, :, 0:3]  # First 3 channels are the image data
+        target = map_npy_mask(sample_tensor[:, :, 3])  # Fourth channel contains target values
+
+        # Rotate the image and target at a random angle between 0 and 360 degrees
+        random_angle = np.random.randint(0, 360)
+        rotated_image_data = rotate(image_data, random_angle, reshape=False)
+        rotated_target = rotate(target, random_angle, reshape=False)
+
+        # Save the original and rotated images and targets
+        original_file_path = os.path.join(ROTATED_FOLDER, f"original_{file}")
+        rotated_file_path = os.path.join(ROTATED_FOLDER, f"rotated_{file}")
+
+
+        np.save(rotated_file_path, np.concatenate([rotated_image_data, rotated_target], axis=-1))
+
+        # Delete the original file
+        os.remove(file_path)
+
+    for file in orange_files:
+        step += 1
+        if step % 100 == 0:
+            print(step)
+
+        file_path = os.path.join(ARRAYS_FOLDER, file)
+        sample_tensor = np.load(file_path)
+
+        image_data = sample_tensor[:, :, 0:3]  # First 3 channels are the image data
+        target = map_npy_mask(sample_tensor[:, :, 3])  # Fourth channel contains target values
+
+        # Rotate the image and target at a random angle between 0 and 360 degrees
+        random_angle = np.random.randint(0, 360)
+        rotated_image_data = rotate(image_data, random_angle, reshape=False)
+        rotated_target = rotate(target, random_angle, reshape=False)
+
+        # Save the original and rotated images and targets
+        original_file_path = os.path.join(ROTATED_FOLDER, f"original_{file}")
+        rotated_file_path = os.path.join(ROTATED_FOLDER, f"rotated_{file}")
+
+
+        np.save(rotated_file_path, np.concatenate([rotated_image_data, rotated_target], axis=-1))
+
+        # Delete the original file
+        os.remove(file_path)
 
 
 # Create the rotated folder if it doesn't exist
