@@ -10,51 +10,40 @@ from torchmetrics.functional import dice
 
 
 print("Started running car segmentation model.")
-BATCH_SIZE = 32
-ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
+BATCH_SIZE = 64
+ARRAYS_FOLDER = './arrays/'  # ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
+NUM_CLASSES = 9
 
-black_5_doors_arrays = {}
-orange_3_doors_arrays = {}
-photo_arrays = {}
+image_data_list = []
+target_list = []
+
+
+def one_hot_mask(mask):
+    out = np.zeros((mask.size, NUM_CLASSES), dtype=np.float_)
+    out[np.arange(mask.size), mask.ravel()] = 1
+    out.shape = mask.shape + (NUM_CLASSES,)
+    return out
+
 
 npy_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.endswith('.npy')]
 for file in npy_files:
     file_path = os.path.join(ARRAYS_FOLDER, file)
     
     # Load the numpy array and normalize by dividing with the maximum value
-    sample_tensor = torch.from_numpy(np.load(file_path)) / 255
-    
-    sample_tensor = sample_tensor.permute(2, 0, 1)  # Reshaping from HxWxC to CxHxW
-    
-    # Extract the image data and target values
-    image_data = sample_tensor[0:3, :, :]  # First 3 channels are the image data
-    target = sample_tensor[3:6, :, :]  # Last 3 channels contain the target value
-    
-    if 'black_5_doors' in file:
-        black_5_doors_arrays[file] = {'image_data': image_data, 'target': target}       
-    elif file.startswith('rotated_orange_3_doors'):
-        orange_3_doors_arrays[file] = {'image_data': image_data, 'target': target}
-    elif file.startswith('rotated_photo_'):
-        photo_arrays[file] = {'image_data': image_data, 'target': target}
-        
-image_data_list = []
-target_list = []
-for data_dict in black_5_doors_arrays:
-    image_data = black_5_doors_arrays[data_dict]['image_data']
-    target_data = black_5_doors_arrays[data_dict]['target']
-    image_data_list.append(image_data)
-    target_list.append(target_data)
-for data_dict in orange_3_doors_arrays:
-    image_data = orange_3_doors_arrays[data_dict]['image_data']
-    target_data = orange_3_doors_arrays[data_dict]['target']
-    image_data_list.append(image_data)
-    target_list.append(target_data)
-for data_dict in photo_arrays:
-    image_data = photo_arrays[data_dict]['image_data']
-    target_data = photo_arrays[data_dict]['target']
-    image_data_list.append(image_data)
-    target_list.append(target_data)
+    npy_file = np.load(file_path)
 
+    image = torch.from_numpy(npy_file[:, :, 0:3]) / 255 # First 3 channels are the image data
+    image = image.permute(2, 0, 1)  # Reshaping from HxWxC to CxHxW
+
+    # Use this two lines to have a mask of the shape: CxHxW (Called probabilities in the documentation)
+    # target = one_hot_mask((npy_file[:, :, 3] % 90) // 10) # Last channel is the mask and we prepare it for one_hot
+    # target = torch.from_numpy(target).permute(2, 0, 1) # Reshaping from HxWxC to CxHxW
+
+    # Use this line to have a mask of the shape: HxW (Called class indices, I think this is the correct way to go)
+    target = torch.as_tensor((npy_file[:, :, 3] % 90) // 10, dtype=torch.long)
+
+    image_data_list.append(image)
+    target_list.append(target)
 
 images_tensor = torch.stack(image_data_list, dim=0)
 masks_tensor = torch.stack(target_list, dim=0)
@@ -65,9 +54,9 @@ train_size = math.floor(DATASET_LENGTH * 0.8)
 val_size = math.floor(DATASET_LENGTH * 0.1)
 test_size = DATASET_LENGTH - train_size - val_size
 
-generator = torch.Generator().manual_seed(1)
-train_set, temp_set = random_split(dataset, [train_size, val_size + test_size], generator=generator)
-val_set, test_set = random_split(temp_set, [val_size, test_size], generator=generator)
+generator_seed = torch.Generator().manual_seed(0)
+train_set, temp_set = random_split(dataset, [train_size, val_size + test_size], generator=generator_seed)
+val_set, test_set = random_split(temp_set, [val_size, test_size], generator=generator_seed)
 
 train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
@@ -78,6 +67,7 @@ class ConvBlock(nn.Module):
     def __init__(self, in_channels, mid_channels, out_channels):
         super().__init__()
         self.conv_block = nn.Sequential(
+            # We use bias=False because it is somehow cancelled out by the batchnorm
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
@@ -117,6 +107,7 @@ class Up(nn.Module):
         x = torch.cat([x2, x1], dim=1)  # x1 and x2 need to have the same number of rows, I think
         return self.conv(x)
 
+
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()
@@ -140,7 +131,7 @@ class UNet(nn.Module):
         self.up2 = (Up(512, 256))
         self.up3 = (Up(256, 128))
         self.up4 = (Up(128, 64))
-        self.outc = (OutConv(64, 3))
+        self.outc = (OutConv(64, NUM_CLASSES))
 
     def forward(self, x):
         x1 = self.inc(x)  # x1 HxW: 256x256
@@ -160,6 +151,7 @@ class UNet(nn.Module):
 # TODO: this needs a fix
 def accuracy(outputs, targets):
     return 1
+
 
 def dice_coeff(outputs, targets):
     # Assuming outputs and targets are tensors with shape (batch_size, num_classes, height, width)
@@ -223,8 +215,7 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
         epoch_dice = 0
         model.train()
         
-        for step, (inputs, masks) in enumerate(train_loader, 1):  # Start counting steps from 1
-            # print(f"Epoch: {epoch}, step: {step} out of {train_steps}.")
+        for step, (inputs, masks) in enumerate(train_loader, 1):
             inputs, masks = inputs.to(device), masks.to(device)
             optimizer.zero_grad()
             output = model(inputs)
@@ -256,8 +247,8 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
 
 
 model = UNet()
-optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
-train_model(model, 5, optimizer, loss_fn, save_path)
+train_model(model, 10, optimizer, loss_fn, save_path)
 
