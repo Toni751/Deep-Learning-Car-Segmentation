@@ -5,6 +5,9 @@ import os
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader, random_split
+import torchmetrics
+from torchmetrics.functional import dice
+
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 32
@@ -62,9 +65,9 @@ train_size = math.floor(DATASET_LENGTH * 0.8)
 val_size = math.floor(DATASET_LENGTH * 0.1)
 test_size = DATASET_LENGTH - train_size - val_size
 
-generator_seed = torch.Generator().manual_seed(0)
-train_set, temp_set = random_split(dataset, [train_size, val_size + test_size], generator=generator_seed)
-val_set, test_set = random_split(temp_set, [val_size, test_size], generator=generator_seed)
+generator = torch.Generator().manual_seed(1)
+train_set, temp_set = random_split(dataset, [train_size, val_size + test_size], generator=generator)
+val_set, test_set = random_split(temp_set, [val_size, test_size], generator=generator)
 
 train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
@@ -158,6 +161,11 @@ class UNet(nn.Module):
 def accuracy(outputs, targets):
     return 1
 
+def dice_coeff(outputs, targets):
+    # Assuming outputs and targets are tensors with shape (batch_size, num_classes, height, width)
+    dice = torchmetrics.functional.dice(outputs.argmax(dim=1), targets.argmax(dim=1))
+    return dice
+
 
 def save_model(model, optimizer, save_path):
     state = {
@@ -180,18 +188,19 @@ def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
     with torch.no_grad():
         model.eval()
         set_loss = 0
-        set_acc = 0
+        set_dice = 0
         for inputs, masks in loader:
             inputs, masks = inputs.to(device), masks.to(device)
             output = model(inputs)
             set_loss += loss_fn(output, masks).item()
 
-            batch_acc = accuracy(output, masks.to(device))
-            set_acc += batch_acc
+            batch_dice = dice_coeff(output, masks)
+            set_dice += batch_dice
 
-        set_acc /= len(loader)
+        set_dice /= len(loader)
         set_loss /= math.ceil(set_length / BATCH_SIZE)
-        return set_loss, set_acc
+        return set_loss, set_dice
+
 
 
 def train_model(model, epochs, optimizer, loss_fn, save_path):
@@ -206,12 +215,12 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     train_steps = math.ceil(len(train_set) / BATCH_SIZE)
     train_losses = []
     val_losses = []
-    train_accuracies = []
+    train_dices = []
     val_accuracies = []
     
     for epoch in range(1, epochs + 1):
         epoch_loss = 0
-        epoch_acc = 0
+        epoch_dice = 0
         model.train()
         
         for step, (inputs, masks) in enumerate(train_loader, 1):  # Start counting steps from 1
@@ -224,19 +233,19 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
             batch_loss.backward()
             optimizer.step()
             epoch_loss += batch_loss.item()
-            
-            batch_acc = accuracy(output, masks)
-            epoch_acc += batch_acc
-        
-        epoch_acc /= train_steps
-        train_accuracies.append(epoch_acc)
+
+            batch_dice = dice_coeff(output, masks)
+            epoch_dice += batch_dice
+
+        epoch_dice /= train_steps
+        train_dices.append(epoch_dice)
         train_losses.append(epoch_loss / train_steps)
 
         val_loss, val_acc = evaluate_val_test_set(model, device, loss_fn, len(val_set), val_loader)
         val_losses.append(val_loss)
         val_accuracies.append(val_acc)
 
-        print(f"Epoch train loss: {train_losses[-1]}, train accuracy: {train_accuracies[-1]}")
+        print(f"Epoch train loss: {train_losses[-1]}, train accuracy: {train_dices[-1]}")
         print(f"Epoch validation loss: {val_losses[-1]}, validation accuracy: {val_accuracies[-1]}")
 
     if save_path is not None:
