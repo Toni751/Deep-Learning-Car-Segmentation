@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader, random_split
 import torchmetrics
 from torchmetrics.functional import dice
+import torch.nn.functional as F
 
 
 print("Started running car segmentation model.")
@@ -154,9 +155,16 @@ def accuracy(outputs, targets):
 
 
 def dice_coeff(outputs, targets):
-    # Assuming outputs and targets are tensors with shape (batch_size, num_classes, height, width)
-    dice = torchmetrics.functional.dice(outputs.argmax(dim=1), targets.argmax(dim=1))
+    # Ensure that outputs is a float tensor and apply softmax
+    outputs = F.softmax(outputs, dim=1).float()
+
+    # Ensure that targets is a long tensor (class indices)
+    targets = targets.long()
+
+    # Compute dice coefficient
+    dice = torchmetrics.functional.dice(outputs.argmax(dim=1), targets)
     return dice
+
 
 
 def save_model(model, optimizer, save_path):
