@@ -45,7 +45,7 @@ def preprocess_file(files, shouldRotate=False, shouldMirror=False, shouldChangeB
         if shouldChangeBackground == True:
             new_file_name += "background_"
             # Determine the landscape image filename based on step count
-            landscape_image_filename = f"{step:04d}.jpg"
+            landscape_image_filename = f"{step + 1:04d}.jpg"
             landscape_image_path = os.path.join(LANDSCAPES_FOLDER, landscape_image_filename)
 
             # Replace black background with the specified landscape image
@@ -107,8 +107,7 @@ def preprocess_input():
         np.save(original_file_path, tensor)
 
     # Preprocess black images
-    random_angle = np.random.choice([45, 90, 135, 180, 225, 270, 315])
-    preprocess_file(black_files, shouldRotate=True, angle=random_angle)
+    preprocess_file(black_files, shouldRotate=True, angle=getRandomAngles())
     # Save original images
     for file in black_files:
         original_file_path = os.path.join(ROTATED_FOLDER, f"original_{file}")
@@ -123,6 +122,8 @@ def preprocess_input():
         tensor = np.load(file_path)
         np.save(original_file_path, tensor)
 
+def getRandomAngles():
+    return np.random.choice([45, 90, 135, 180, 225, 270, 315]);
 # Create the rotated folder if it doesn't exist
 if not os.path.exists(ROTATED_FOLDER):
     os.makedirs(ROTATED_FOLDER)
