@@ -1,18 +1,19 @@
 import numpy as np
+import itertools
+import torch
 import torch.optim as optim
+import torch.nn as nn
+from torch.utils.data import DataLoader, random_split, TensorDataset
 import math
 import os
-import torch
-import torch.nn as nn
-from torch.utils.data import TensorDataset, DataLoader, random_split
 import torchmetrics
-from torchmetrics.functional import dice
 import torch.nn.functional as F
 
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 64
-ARRAYS_FOLDER = './arrays/'  # ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
+#ARRAYS_FOLDER = './arrays/'
+ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
 NUM_CLASSES = 9
 
 image_data_list = []
@@ -68,7 +69,6 @@ class ConvBlock(nn.Module):
     def __init__(self, in_channels, mid_channels, out_channels):
         super().__init__()
         self.conv_block = nn.Sequential(
-            # We use bias=False because it is somehow cancelled out by the batchnorm
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
@@ -77,8 +77,15 @@ class ConvBlock(nn.Module):
             nn.ReLU(inplace=True)
         )
 
+        # Initialize weights using He initialization
+        for layer in self.conv_block.children():
+            if isinstance(layer, nn.Conv2d):
+                nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
+
     def forward(self, x):
         return self.conv_block(x)
+
+
 
 
 class Down(nn.Module):
@@ -122,17 +129,25 @@ class OutConv(nn.Module):
 class UNet(nn.Module):
     def __init__(self):
         super(UNet, self).__init__()
-        
-        self.inc = (ConvBlock(3, 64, 64)) 
-        self.down1 = (Down(64, 128)) 
-        self.down2 = (Down(128, 256))
-        self.down3 = (Down(256, 512))
-        self.down4 = (Down(512, 1024))
-        self.up1 = (Up(1024, 512))
-        self.up2 = (Up(512, 256))
-        self.up3 = (Up(256, 128))
-        self.up4 = (Up(128, 64))
-        self.outc = (OutConv(64, NUM_CLASSES))
+
+        self.inc = ConvBlock(3, 64, 64)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 256)
+        self.down3 = Down(256, 512)
+        self.down4 = Down(512, 1024)
+
+        # Additional layer
+        self.down5 = Down(1024, 2048)
+
+        self.up1 = Up(2048, 1024)
+        self.up2 = Up(1024, 512)
+        self.up3 = Up(512, 256)
+        self.up4 = Up(256, 128)
+
+        # Additional layer
+        self.up5 = Up(128, 64)
+
+        self.outc = OutConv(64, NUM_CLASSES)
 
     def forward(self, x):
         x1 = self.inc(x)  # x1 HxW: 256x256
@@ -140,10 +155,18 @@ class UNet(nn.Module):
         x3 = self.down2(x2)  # x3 HxW: 64x64
         x4 = self.down3(x3)  # x4 HxW: 32x32
         x5 = self.down4(x4)  # x5 HxW: 16x16
-        x = self.up1(x5, x4)  # up(x5) gives 32x32, concat with x4, HxW remains 32x32 and the channels are added
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
+
+        # Additional layer
+        x6 = self.down5(x5)  # x6 HxW: 8x8
+
+        x = self.up1(x6, x5)  # up(x6) gives 16x16, concat with x5, HxW remains 16x16 and the channels are added
+        x = self.up2(x, x4)
+        x = self.up3(x, x3)
+        x = self.up4(x, x2)
+
+        # Additional layer
+        x = self.up5(x, x1)  # up(x4) gives 32x32, concat with x3, HxW remains 32x32 and the channels are added
+
         logits = self.outc(x)
         return logits
 
@@ -254,9 +277,56 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
 
 
-model = UNet()
-optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
-loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
-save_path = 'model.pth'
-train_model(model, 10, optimizer, loss_fn, save_path)
+#model = UNet()
+#optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+#loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
+#save_path = 'model.pth'
+#train_model(model, 10, optimizer, loss_fn, save_path)
+def run_grid_search(param_grid, num_epochs=10):
+    # Generate all possible combinations of hyperparameters
+    all_params = [dict(zip(param_grid.keys(), values)) for values in itertools.product(*param_grid.values())]
+
+    for params in all_params:
+        print(f"\nTraining model with hyperparameters: {params}")
+
+        model = UNet()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.to(device)
+        optimizer = optim.Adam(model.parameters(), lr=params['learning_rate'], weight_decay=params['weight_decay'])
+        criterion = nn.CrossEntropyLoss()
+
+        train_loader = DataLoader(train_set, batch_size=params['batch_size'], shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=params['batch_size'], shuffle=False)
+
+        for epoch in range(num_epochs):
+            model.train()  # Ensure the model is in training mode
+
+            for inputs, targets in train_loader:
+                inputs, targets = inputs.to(device), targets.to(device)  # Move data to the same device as the model
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
+                loss.backward()
+                optimizer.step()
+
+        # Evaluate the model on the validation set
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for inputs, targets in val_loader:
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
+                val_loss += loss.item()
+
+        print(f'Validation Loss: {val_loss}')
+
+
+param_grid = {
+    'learning_rate': [1e-3, 1e-4, 1e-5],
+    'weight_decay': [0, 1e-4, 1e-3],
+    'batch_size': [16, 32, 64]
+}
+
+# Run grid search
+run_grid_search(param_grid)
 
