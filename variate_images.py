@@ -83,6 +83,9 @@ def replace_black_background(image_data, background_image_path):
     return image_data
 
 
+def getRandomAngles():
+    return np.random.choice([45, 90, 135, 180, 225, 270, 315])
+
 def preprocess_input():
     black_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.startswith('black_5') and f.endswith('.npy')]
     photo_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.startswith('photo') and f.endswith('.npy')]
@@ -98,6 +101,13 @@ def preprocess_input():
     preprocess_file(photo_files, shouldRotate=True, angle=225)
     preprocess_file(photo_files, shouldRotate=True, angle=270)
     preprocess_file(photo_files, shouldRotate=True, angle=315)
+    preprocess_file(photo_files, shouldRotate=True, angle=45, shouldMirror=True)
+    preprocess_file(photo_files, shouldRotate=True, angle=90, shouldMirror=True)
+    preprocess_file(photo_files, shouldRotate=True, angle=135, shouldMirror=True)
+    preprocess_file(photo_files, shouldRotate=True, angle=180, shouldMirror=True)
+    preprocess_file(photo_files, shouldRotate=True, angle=225, shouldMirror=True)
+    preprocess_file(photo_files, shouldRotate=True, angle=270, shouldMirror=True)
+    preprocess_file(photo_files, shouldRotate=True, angle=315, shouldMirror=True)
     preprocess_file(photo_files, shouldMirror=True)
     # Save original images
     for file in photo_files:
@@ -122,8 +132,7 @@ def preprocess_input():
         tensor = np.load(file_path)
         np.save(original_file_path, tensor)
 
-def getRandomAngles():
-    return np.random.choice([45, 90, 135, 180, 225, 270, 315]);
+
 # Create the rotated folder if it doesn't exist
 if not os.path.exists(ROTATED_FOLDER):
     os.makedirs(ROTATED_FOLDER)
