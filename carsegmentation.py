@@ -5,26 +5,16 @@ import os
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader, random_split
-import torchmetrics
 from torchmetrics.functional import dice
 import torch.nn.functional as F
-
+from unets import UNet, UNetPlusPlus
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 64
 ARRAYS_FOLDER = './arrays/'  # ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
-NUM_CLASSES = 9
 
 image_data_list = []
 target_list = []
-
-
-def one_hot_mask(mask):
-    out = np.zeros((mask.size, NUM_CLASSES), dtype=np.float_)
-    out[np.arange(mask.size), mask.ravel()] = 1
-    out.shape = mask.shape + (NUM_CLASSES,)
-    return out
-
 
 npy_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.endswith('.npy')]
 for file in npy_files:
@@ -64,96 +54,6 @@ val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False)
 
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_channels, mid_channels, out_channels):
-        super().__init__()
-        self.conv_block = nn.Sequential(
-            # We use bias=False because it is somehow cancelled out by the batchnorm
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
-
-    def forward(self, x):
-        return self.conv_block(x)
-
-
-class Down(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.maxpool_conv = nn.Sequential(
-            nn.MaxPool2d(2),
-            ConvBlock(in_channels, out_channels, out_channels)
-        )
-
-    def forward(self, x):
-        return self.maxpool_conv(x)
-
-
-class Up(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        # output shape excluding channels (same for both height and width) is:
-        # out = (in - 1) * stride - 2 * padding + (kernel_size - 1) + 1
-        # here, with padding = 0, we get:
-        # out = (stride * in) - (2 * stride) + kernel
-        self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-        self.conv = ConvBlock(in_channels, out_channels, out_channels)
-
-    def forward(self, x1, x2):
-        x1 = self.up(x1)
-        x = torch.cat([x2, x1], dim=1)  # x1 and x2 need to have the same number of rows, I think
-        return self.conv(x)
-
-
-class OutConv(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(OutConv, self).__init__()
-        # the CrossEntropyLoss automatically wraps this in a LogSoftmax, that's why we don't do it here
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-
-    def forward(self, x):
-        return self.conv(x)
-
-
-class UNet(nn.Module):
-    def __init__(self):
-        super(UNet, self).__init__()
-        
-        self.inc = (ConvBlock(3, 64, 64)) 
-        self.down1 = (Down(64, 128)) 
-        self.down2 = (Down(128, 256))
-        self.down3 = (Down(256, 512))
-        self.down4 = (Down(512, 1024))
-        self.up1 = (Up(1024, 512))
-        self.up2 = (Up(512, 256))
-        self.up3 = (Up(256, 128))
-        self.up4 = (Up(128, 64))
-        self.outc = (OutConv(64, NUM_CLASSES))
-
-    def forward(self, x):
-        x1 = self.inc(x)  # x1 HxW: 256x256
-        x2 = self.down1(x1)  # x2 HxW: 128x128
-        x3 = self.down2(x2)  # x3 HxW: 64x64
-        x4 = self.down3(x3)  # x4 HxW: 32x32
-        x5 = self.down4(x4)  # x5 HxW: 16x16
-        x = self.up1(x5, x4)  # up(x5) gives 32x32, concat with x4, HxW remains 32x32 and the channels are added
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
-        logits = self.outc(x)
-        return logits
-
-
-# TODO: maybe here we want to use the dice coefficient instead? (torchmetrics.Dice ?)
-# TODO: this needs a fix
-def accuracy(outputs, targets):
-    return 1
-
-
 def dice_coeff(outputs, targets):
     # Ensure that outputs is a float tensor and apply softmax
     outputs = F.softmax(outputs, dim=1).float()
@@ -162,9 +62,7 @@ def dice_coeff(outputs, targets):
     targets = targets.long()
 
     # Compute dice coefficient
-    dice = torchmetrics.functional.dice(outputs.argmax(dim=1), targets)
-    return dice
-
+    return dice(outputs.argmax(dim=1), targets)
 
 
 def save_model(model, optimizer, save_path):
@@ -200,7 +98,6 @@ def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
         set_dice /= len(loader)
         set_loss /= math.ceil(set_length / BATCH_SIZE)
         return set_loss, set_dice
-
 
 
 def train_model(model, epochs, optimizer, loss_fn, save_path):
@@ -254,9 +151,8 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
 
 
-model = UNet()
+model = UNet()  # model = UNetPlusPlus()
 optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
 train_model(model, 10, optimizer, loss_fn, save_path)
-
