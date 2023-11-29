@@ -100,6 +100,7 @@ def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
         return set_loss, set_dice
 
 
+
 def train_model(model, epochs, optimizer, loss_fn, save_path):
     if not torch.cuda.is_available():
         print("CUDA NOT AVAILABLE!!!!")
@@ -108,23 +109,23 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
-    
+
     train_steps = math.ceil(len(train_set) / BATCH_SIZE)
     train_losses = []
     val_losses = []
     train_dices = []
     val_accuracies = []
-    
+
     for epoch in range(1, epochs + 1):
         epoch_loss = 0
         epoch_dice = 0
         model.train()
-        
+
         for step, (inputs, masks) in enumerate(train_loader, 1):
             inputs, masks = inputs.to(device), masks.to(device)
             optimizer.zero_grad()
             output = model(inputs)
-            
+
             batch_loss = loss_fn(output, masks)
             batch_loss.backward()
             optimizer.step()
@@ -141,8 +142,10 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
         val_losses.append(val_loss)
         val_accuracies.append(val_acc)
 
-        print(f"Epoch train loss: {train_losses[-1]}, train accuracy: {train_dices[-1]}")
-        print(f"Epoch validation loss: {val_losses[-1]}, validation accuracy: {val_accuracies[-1]}")
+        print(f"Epoch {epoch}, train loss: {train_losses[-1]}, train accuracy: {train_dices[-1]}")
+        print(f"Epoch {epoch}, validation loss: {val_losses[-1]}, validation accuracy: {val_accuracies[-1]}")
+
+        scheduler.step()  # Step the learning rate scheduler
 
     if save_path is not None:
         save_model(model, optimizer, save_path)
@@ -155,4 +158,5 @@ model = UNet()  # model = UNetPlusPlus()
 optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
 train_model(model, 10, optimizer, loss_fn, save_path)
