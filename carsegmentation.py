@@ -11,7 +11,7 @@ from unets import UNet, UNetPlusPlus
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 64
-ARRAYS_FOLDER = './arrays/'  # ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
+ARRAYS_FOLDER = './arrays_rotated/'  # ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
 
 image_data_list = []
 target_list = []
@@ -151,7 +151,7 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
 
 
-model = UNet()  # model = UNetPlusPlus()
+model = UNetPlusPlus()
 optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'

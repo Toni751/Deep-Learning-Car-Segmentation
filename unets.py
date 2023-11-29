@@ -32,14 +32,14 @@ class Down(nn.Module):
 
 
 class Up(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, factor=2):
         super().__init__()
         # output shape excluding channels (same for both height and width) is:
         # out = (in - 1) * stride - 2 * padding + (kernel_size - 1) + 1
         # here, with padding = 0, we get:
         # out = (stride * in) - (2 * stride) + kernel
-        self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-        self.conv = ConvBlock(in_channels, out_channels, out_channels)
+        self.up = nn.ConvTranspose2d(in_channels * 2, in_channels, kernel_size=2, stride=2)
+        self.conv = ConvBlock(in_channels * factor, out_channels, out_channels)
 
     def forward(self, x1, x2, x3=None, x4=None, x5=None):
         x1 = self.up(x1)
@@ -75,10 +75,10 @@ class UNet(nn.Module):
         self.down2 = (Down(128, 256))
         self.down3 = (Down(256, 512))
         self.down4 = (Down(512, 1024))
-        self.up1 = (Up(1024, 512))
-        self.up2 = (Up(512, 256))
-        self.up3 = (Up(256, 128))
-        self.up4 = (Up(128, 64))
+        self.up1 = (Up(512, 512))
+        self.up2 = (Up(256, 256))
+        self.up3 = (Up(128, 128))
+        self.up4 = (Up(64, 64))
         self.outc = (OutConv(64, 9))
 
     def forward(self, x):
@@ -105,19 +105,19 @@ class UNetPlusPlus(nn.Module):
         self.down3_0 = Down(128, 256)
         self.down4_0 = Down(256, 512)
 
-        self.up0_1 = Up(32 + 64, 32)
-        self.up1_1 = Up(64 + 128, 64)
-        self.up2_1 = Up(128 + 256, 128)
-        self.up3_1 = Up(256 + 512, 256)
+        self.up0_1 = Up(32, 32)
+        self.up1_1 = Up(64, 64)
+        self.up2_1 = Up(128, 128)
+        self.up3_1 = Up(256, 256)
 
-        self.up0_2 = Up(32 * 2 + 64, 32)
-        self.up1_2 = Up(64 * 2 + 128, 64)
-        self.up2_2 = Up(128 * 2 + 256, 128)
+        self.up0_2 = Up(32, 32, 3)
+        self.up1_2 = Up(64, 64, 3)
+        self.up2_2 = Up(128, 128, 3)
 
-        self.up0_3 = Up(32 * 3 + 64, 32)
-        self.up1_3 = Up(64 * 3 + 128, 64)
+        self.up0_3 = Up(32, 32, 4)
+        self.up1_3 = Up(64, 64, 4)
 
-        self.up0_4 = Up(32 * 4 + 64, 32)
+        self.up0_4 = Up(32, 32, 5)
 
         self.outc = OutConv(32, 9)
 
