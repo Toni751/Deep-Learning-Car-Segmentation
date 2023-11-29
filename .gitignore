@@ -4,3 +4,4 @@
 *.jpg
 carseg_data/README.txt
 .ipynb_checkpoints/Car Image Segmentation - Project-checkpoint.ipynb
+*.pth
