@@ -19,7 +19,7 @@ target_list = []
 npy_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.endswith('.npy')]
 for file in npy_files:
     file_path = os.path.join(ARRAYS_FOLDER, file)
-    
+
     # Load the numpy array and normalize by dividing with the maximum value
     npy_file = np.load(file_path)
 
@@ -76,7 +76,11 @@ def load_model(model, optimizer, load_path):
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     print(f'Model loaded from {load_path}')
     return model, optimizer
-
+def weights_init(m):
+    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
 
 def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
     with torch.no_grad():
@@ -150,8 +154,9 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
 
 
-model = UNetPlusPlus()
-optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+model = UNet()
+model.apply(weights_init)
+optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.0003)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
