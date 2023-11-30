@@ -99,27 +99,27 @@ class UNetPlusPlus(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.conv0_0 = ConvBlock(3, 32, 32)
-        self.down1_0 = Down(32, 64)
-        self.down2_0 = Down(64, 128)
-        self.down3_0 = Down(128, 256)
-        self.down4_0 = Down(256, 512)
+        self.conv0_0 = ConvBlock(3, 64, 64)
+        self.down1_0 = Down(64, 128)
+        self.down2_0 = Down(128, 256)
+        self.down3_0 = Down(256, 512)
+        self.down4_0 = Down(512, 1024)
 
-        self.up0_1 = Up(32, 32)
-        self.up1_1 = Up(64, 64)
-        self.up2_1 = Up(128, 128)
-        self.up3_1 = Up(256, 256)
+        self.up0_1 = Up(64, 64)
+        self.up1_1 = Up(128, 128)
+        self.up2_1 = Up(256, 256)
+        self.up3_1 = Up(512, 512)
 
-        self.up0_2 = Up(32, 32, 3)
-        self.up1_2 = Up(64, 64, 3)
-        self.up2_2 = Up(128, 128, 3)
+        self.up0_2 = Up(64, 64, 3)
+        self.up1_2 = Up(128, 128, 3)
+        self.up2_2 = Up(256, 256, 3)
 
-        self.up0_3 = Up(32, 32, 4)
-        self.up1_3 = Up(64, 64, 4)
+        self.up0_3 = Up(64, 64, 4)
+        self.up1_3 = Up(128, 128, 4)
 
-        self.up0_4 = Up(32, 32, 5)
+        self.up0_4 = Up(64, 64, 5)
 
-        self.outc = OutConv(32, 9)
+        self.outc = OutConv(64, 9)
 
     def forward(self, input):
         x0_0 = self.conv0_0(input)  # 256x256

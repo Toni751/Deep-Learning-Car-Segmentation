@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from unets import UNet, UNetPlusPlus
 
 print("Started running car segmentation model.")
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 ARRAYS_FOLDER = './arrays_rotated/'  # ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
 
 image_data_list = []
@@ -25,10 +25,6 @@ for file in npy_files:
 
     image = torch.from_numpy(npy_file[:, :, 0:3]) / 255 # First 3 channels are the image data
     image = image.permute(2, 0, 1)  # Reshaping from HxWxC to CxHxW
-
-    # Use this two lines to have a mask of the shape: CxHxW (Called probabilities in the documentation)
-    # target = one_hot_mask((npy_file[:, :, 3] % 90) // 10) # Last channel is the mask and we prepare it for one_hot
-    # target = torch.from_numpy(target).permute(2, 0, 1) # Reshaping from HxWxC to CxHxW
 
     # Use this line to have a mask of the shape: HxW (Called class indices, I think this is the correct way to go)
     target = torch.as_tensor((npy_file[:, :, 3] % 90) // 10, dtype=torch.long)
