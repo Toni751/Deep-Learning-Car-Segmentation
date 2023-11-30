@@ -80,7 +80,11 @@ def load_model(model, optimizer, load_path):
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     print(f'Model loaded from {load_path}')
     return model, optimizer
-
+def weights_init(m):
+    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
 
 def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
     with torch.no_grad():
@@ -154,7 +158,8 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
 
 
-model = UNetPlusPlus()
+model = UNet()
+model.apply(weights_init)
 optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.0003)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
