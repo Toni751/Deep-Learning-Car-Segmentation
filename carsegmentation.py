@@ -7,6 +7,8 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader, random_split
 from torchmetrics.functional import dice
 import torch.nn.functional as F
+from torchvision.models.segmentation import fcn_resnet50
+from torchvision.models.resnet import ResNet50_Weights
 from unets import UNet, UNetPlusPlus
 import itertools
 
@@ -49,6 +51,16 @@ val_set, test_set = random_split(temp_set, [val_size, test_size], generator=gene
 train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False)
+
+
+def get_pretrained_model():
+    pretrained_model = fcn_resnet50(weights_backbone=ResNet50_Weights.DEFAULT)
+    pretrained_model.classifier[-1] = UNet(512)
+
+    for p in pretrained_model.backbone.parameters():
+        p.requires_grad = False
+
+    return pretrained_model
 
 
 def dice_coeff(outputs, targets):

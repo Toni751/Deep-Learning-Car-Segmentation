@@ -67,10 +67,10 @@ class OutConv(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self):
+    def __init__(self, n_channels=3):
         super(UNet, self).__init__()
 
-        self.inc = (ConvBlock(3, 64, 64))
+        self.inc = (ConvBlock(n_channels, 64, 64))
         self.down1 = (Down(64, 128))
         self.down2 = (Down(128, 256))
         self.down3 = (Down(256, 512))
