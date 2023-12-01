@@ -8,6 +8,7 @@ from torch.utils.data import TensorDataset, DataLoader, random_split
 from torchmetrics.functional import dice
 import torch.nn.functional as F
 from unets import UNet, UNetPlusPlus
+import itertools
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 32
@@ -23,7 +24,7 @@ for file in npy_files:
     # Load the numpy array and normalize by dividing with the maximum value
     npy_file = np.load(file_path)
 
-    image = torch.from_numpy(npy_file[:, :, 0:3]) / 255 # First 3 channels are the image data
+    image = torch.from_numpy(npy_file[:, :, 0:3]) / 255  # First 3 channels are the image data
     image = image.permute(2, 0, 1)  # Reshaping from HxWxC to CxHxW
 
     # Use this line to have a mask of the shape: HxW (Called class indices, I think this is the correct way to go)
@@ -76,11 +77,14 @@ def load_model(model, optimizer, load_path):
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     print(f'Model loaded from {load_path}')
     return model, optimizer
+
+
 def weights_init(m):
     if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
+
 
 def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
     with torch.no_grad():
@@ -98,7 +102,6 @@ def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
         set_dice /= len(loader)
         set_loss /= math.ceil(set_length / BATCH_SIZE)
         return set_loss, set_dice
-
 
 
 def train_model(model, epochs, optimizer, loss_fn, save_path):
@@ -154,10 +157,60 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
 
 
-model = UNet()
+model = UNetPlusPlus()
 model.apply(weights_init)
-optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.0003)
+optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay=0.0003)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
-train_model(model, 10, optimizer, loss_fn, save_path)
+train_model(model, 12, optimizer, loss_fn, save_path)
+
+
+
+
+#TO DO GRID SEARCH USE THE CODE BELOW
+
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# # Define the hyperparameters to search
+# learning_rates = [1e-3, 5e-4, 1e-4]
+# weight_decays = [3e-4, 5e-4]
+# epochs_list = [12]
+# batch_sizes = [32, 64]
+#
+# # Initialize variables to store the best hyperparameters and corresponding performance
+# best_hyperparameters = None
+# best_val_accuracy = 0.0
+#
+# # Iterate over all combinations of hyperparameters
+# for learning_rate, weight_decay, epochs, batch_size in itertools.product(learning_rates, weight_decays, epochs_list,
+#                                                                          batch_sizes):
+#     print(f"Testing hyperparameters: lr={learning_rate}, wd={weight_decay}, epochs={epochs}, batch_size={batch_size}")
+#
+#     # Create a new model for each combination
+#     model = UNetPlusPlus()
+#     model.apply(weights_init)
+#     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+#     loss_fn = nn.CrossEntropyLoss()
+#     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
+#
+#     # Train the model with the current hyperparameters
+#     save_path = f'model_lr{learning_rate}_wd{weight_decay}_epochs{epochs}_batch{batch_size}.pth'
+#     train_model(model, epochs, optimizer, loss_fn, save_path)
+#
+#     # Evaluate the model on the validation set
+#     _, val_accuracy = evaluate_val_test_set(model, device, loss_fn, len(val_set), val_loader)
+#
+#     print(f"Validation accuracy: {val_accuracy}")
+#
+#     # Update the best hyperparameters if the current model performs better
+#     if val_accuracy > best_val_accuracy:
+#         best_val_accuracy = val_accuracy
+#         best_hyperparameters = {
+#             'learning_rate': learning_rate,
+#             'weight_decay': weight_decay,
+#             'epochs': epochs,
+#             'batch_size': batch_size
+#         }
+#
+# print("Grid search complete.")
+# print("Best hyperparameters:", best_hyperparameters)
