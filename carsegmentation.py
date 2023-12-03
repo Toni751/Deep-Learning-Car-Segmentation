@@ -10,11 +10,14 @@ import torch.nn.functional as F
 from torchvision.models.segmentation import fcn_resnet50
 from torchvision.models.resnet import ResNet50_Weights
 from unets import UNet, UNetPlusPlus
+import matplotlib.pyplot as plt
 import itertools
+import csv
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 32
-ARRAYS_FOLDER = './arrays_rotated/'  # ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
+#ARRAYS_FOLDER = './arrays_rotated/'
+ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
 
 image_data_list = []
 target_list = []
@@ -52,7 +55,43 @@ train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False)
 
+def save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies, file_path='loss_accuracy.csv'):
+    with open(file_path, 'w', newline='') as csvfile:
+        csv_writer = csv.writer(csvfile)
+        csv_writer.writerow(['Epoch', 'Train Loss', 'Train Accuracy', 'Validation Loss', 'Validation Accuracy'])
 
+        for epoch, train_loss, train_dice, val_loss, val_accuracy in zip(range(1, len(train_losses) + 1),
+                                                                        train_losses, train_dices, val_losses,
+                                                                        val_accuracies):
+            csv_writer.writerow([epoch, train_loss, train_dice, val_loss, val_accuracy])
+
+def plot_loss_and_accuracy_from_file(file_path='loss_accuracy.csv'):
+    with open(file_path, 'r') as csvfile:
+        csv_reader = csv.reader(csvfile)
+        next(csv_reader)  # Skip the header row
+        data = list(zip(*csv_reader))
+
+        epochs, train_losses, train_dices, val_losses, val_accuracies = map(list, data)
+
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 1)
+        plt.plot(epochs, train_losses, label='Train Loss')
+        plt.plot(epochs, val_losses, label='Validation Loss')
+        plt.title('Losses')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+
+        plt.subplot(1, 2, 2)
+        plt.plot(epochs, train_dices, label='Train Accuracy')
+        plt.plot(epochs, val_accuracies, label='Validation Accuracy')
+        plt.title('Accuracies')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
 def get_pretrained_model():
     pretrained_model = fcn_resnet50(weights_backbone=ResNet50_Weights.DEFAULT)
     pretrained_model.classifier[-1] = UNet(512)
@@ -167,6 +206,7 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
 
     test_loss, test_acc = evaluate_val_test_set(model, device, loss_fn, len(test_set), test_loader)
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
+    save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies)
 
 
 model = UNetPlusPlus()
@@ -175,7 +215,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay=0.0003)
 loss_fn = nn.CrossEntropyLoss()  # this should also apply log-softmax to the output
 save_path = 'model.pth'
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
-train_model(model, 12, optimizer, loss_fn, save_path)
+train_model(model, 14, optimizer, loss_fn, save_path)
 
 
 
