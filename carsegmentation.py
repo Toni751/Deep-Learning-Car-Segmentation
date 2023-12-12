@@ -11,12 +11,11 @@ from torchvision.models.segmentation import fcn_resnet50
 from torchvision.models.resnet import ResNet50_Weights
 from unets import UNet, UNetPlusPlus
 import matplotlib.pyplot as plt
-import itertools
 import csv
 
 print("Started running car segmentation model.")
 BATCH_SIZE = 32
-#ARRAYS_FOLDER = './arrays_rotated/'
+# ARRAYS_FOLDER = './arrays_rotated/'
 ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
 
 image_data_list = []
@@ -25,16 +24,10 @@ target_list = []
 npy_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.endswith('.npy')]
 for file in npy_files:
     file_path = os.path.join(ARRAYS_FOLDER, file)
-
-    # Load the numpy array and normalize by dividing with the maximum value
     npy_file = np.load(file_path)
-
-    image = torch.from_numpy(npy_file[:, :, 0:3]) / 255  # First 3 channels are the image data
-    image = image.permute(2, 0, 1)  # Reshaping from HxWxC to CxHxW
-
-    # Use this line to have a mask of the shape: HxW (Called class indices, I think this is the correct way to go)
+    image = torch.from_numpy(npy_file[:, :, 0:3]) / 255
+    image = image.permute(2, 0, 1)
     target = torch.as_tensor((npy_file[:, :, 3] % 90) // 10, dtype=torch.long)
-
     image_data_list.append(image)
     target_list.append(target)
 
@@ -55,15 +48,20 @@ train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False)
 
-def save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies, file_path='loss_accuracy.csv'):
+
+def save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies, file_path='dices.csv'):
     with open(file_path, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(['Epoch', 'Train Loss', 'Train Accuracy', 'Validation Loss', 'Validation Accuracy'])
+        header = ['Epoch', 'Train Loss'] + [f'Train Dice Class {i}' for i in range(len(train_dices[0]))] + [
+            'Validation Loss', 'Validation Accuracy']
+        csv_writer.writerow(header)
+        for epoch, train_loss, train_dices_epoch, val_loss, val_accuracy in zip(range(1, len(train_losses) + 1),
+                                                                                        train_losses, train_dices,
+                                                                                        val_losses,
+                                                                                        val_accuracies):
+            row = [epoch, train_loss] + train_dices_epoch + [val_loss, val_accuracy]
+            csv_writer.writerow(row)
 
-        for epoch, train_loss, train_dice, val_loss, val_accuracy in zip(range(1, len(train_losses) + 1),
-                                                                        train_losses, train_dices, val_losses,
-                                                                        val_accuracies):
-            csv_writer.writerow([epoch, train_loss, train_dice, val_loss, val_accuracy])
 
 def plot_loss_and_accuracy_from_file(file_path='loss_accuracy.csv'):
     with open(file_path, 'r') as csvfile:
@@ -92,6 +90,8 @@ def plot_loss_and_accuracy_from_file(file_path='loss_accuracy.csv'):
 
         plt.tight_layout()
         plt.show()
+
+
 def get_pretrained_model():
     pretrained_model = fcn_resnet50(weights_backbone=ResNet50_Weights.DEFAULT)
     pretrained_model.classifier[-1] = UNet(512)
@@ -103,14 +103,25 @@ def get_pretrained_model():
 
 
 def dice_coeff(outputs, targets):
-    # Ensure that outputs is a float tensor and apply softmax
     outputs = F.softmax(outputs, dim=1).float()
+    targets = targets.long()
+    return dice(outputs.argmax(dim=1), targets)
 
-    # Ensure that targets is a long tensor (class indices)
+
+def dice_coeff_per_class(outputs, targets, num_classes):
+    outputs = F.softmax(outputs, dim=1).float()
     targets = targets.long()
 
-    # Compute dice coefficient
-    return dice(outputs.argmax(dim=1), targets)
+    dice_coeffs = torch.zeros(num_classes, dtype=torch.float)
+
+    for i in range(num_classes):
+        class_outputs = (outputs.argmax(dim=1) == i).float()
+        class_targets = (targets == i).float()
+        intersection = torch.sum(class_outputs * class_targets)
+        union = torch.sum(class_outputs) + torch.sum(class_targets)
+        dice_coeffs[i] = (2.0 * intersection) / (union + 1e-8)
+
+    return dice_coeffs
 
 
 def save_model(model, optimizer, save_path):
@@ -172,7 +183,7 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
 
     for epoch in range(1, epochs + 1):
         epoch_loss = 0
-        epoch_dice = 0
+        epoch_dice = torch.zeros(9, dtype=torch.float)
         model.train()
 
         for step, (inputs, masks) in enumerate(train_loader, 1):
@@ -185,11 +196,11 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
             optimizer.step()
             epoch_loss += batch_loss.item()
 
-            batch_dice = dice_coeff(output, masks)
+            batch_dice = dice_coeff_per_class(output, masks, 9)
             epoch_dice += batch_dice
 
         epoch_dice /= train_steps
-        train_dices.append(epoch_dice)
+        train_dices.append(epoch_dice.tolist())  # Convert to list for saving to CSV
         train_losses.append(epoch_loss / train_steps)
 
         val_loss, val_acc = evaluate_val_test_set(model, device, loss_fn, len(val_set), val_loader)
@@ -201,8 +212,8 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
 
         scheduler.step()  # Step the learning rate scheduler
 
-    if save_path is not None:
-        save_model(model, optimizer, save_path)
+    # if save_path is not None:
+    # save_model(model, optimizer, save_path)
 
     test_loss, test_acc = evaluate_val_test_set(model, device, loss_fn, len(test_set), test_loader)
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
@@ -217,10 +228,7 @@ save_path = 'model.pth'
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
 train_model(model, 14, optimizer, loss_fn, save_path)
 
-
-
-
-#TO DO GRID SEARCH USE THE CODE BELOW
+# TO DO GRID SEARCH USE THE CODE BELOW
 
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # # Define the hyperparameters to search
