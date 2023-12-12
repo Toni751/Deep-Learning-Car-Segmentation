@@ -1,6 +1,4 @@
-#you can put it to the jupyter notebook I just did not want to push that because mine is messy
 import matplotlib.pyplot as plt
-import numpy as np
 
 # RGB values for each class
 r_map = {10: 250, 20: 19, 30: 249, 40: 10, 50: 149, 60: 5, 70: 20, 80: 249, 90: 0}
@@ -18,5 +16,6 @@ bars = plt.bar(range(num_classes), dice_data, color=colors)
 plt.title('Dice Coefficients for Each Class')
 plt.xlabel('Class')
 plt.ylabel('Dice Coefficient')
-plt.ylim(0, 1)  # Set the y-axis range from 0 to 1*
+plt.ylim(0, 1)  # Set the y-axis range from 0 to 1
+plt.savefig('dice_coefficients_plot.png')  # Save the plot as an image file
 plt.show()
