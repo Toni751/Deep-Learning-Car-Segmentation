@@ -48,20 +48,34 @@ train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False)
 
+r_map = {0: 0, 10: 250, 20: 19, 30: 249, 40: 10, 50: 149, 60: 5, 70: 20, 80: 249, 90: 0}
+g_map = {0: 0, 10: 149, 20: 98, 30: 249, 40: 248, 50: 7, 60: 249, 70: 19, 80: 9, 90: 0}
+b_map = {0: 0, 10: 10, 20: 19, 30: 10, 40: 250, 50: 149, 60: 9, 70: 249, 80: 250, 90: 0}
 
-def save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies, file_path='dices.csv'):
+class_color_map = {
+    0: (r_map[0], g_map[0], b_map[0]),
+    1: (r_map[10], g_map[10], b_map[10]),
+    2: (r_map[20], g_map[20], b_map[20]),
+    3: (r_map[30], g_map[30], b_map[30]),
+    4: (r_map[40], g_map[40], b_map[40]),
+    5: (r_map[50], g_map[50], b_map[50]),
+    6: (r_map[60], g_map[60], b_map[60]),
+    7: (r_map[70], g_map[70], b_map[70]),
+    8: (r_map[80], g_map[80], b_map[80]),
+    9: (r_map[90], g_map[90], b_map[90]),
+}
+def save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies, class_color_map, file_path='dices_original.csv'):
     with open(file_path, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
-        header = ['Epoch', 'Train Loss'] + [f'Train Dice Class {i}' for i in range(len(train_dices[0]))] + [
+        header = ['Epoch', 'Train Loss'] + [f'Train Dice Class {i} (Color: {class_color_map[i]})' for i in range(len(train_dices[0]))] + [
             'Validation Loss', 'Validation Accuracy']
         csv_writer.writerow(header)
         for epoch, train_loss, train_dices_epoch, val_loss, val_accuracy in zip(range(1, len(train_losses) + 1),
-                                                                                        train_losses, train_dices,
-                                                                                        val_losses,
-                                                                                        val_accuracies):
+                                                                              train_losses, train_dices,
+                                                                              val_losses,
+                                                                              val_accuracies):
             row = [epoch, train_loss] + train_dices_epoch + [val_loss, val_accuracy]
             csv_writer.writerow(row)
-
 
 def plot_loss_and_accuracy_from_file(file_path='loss_accuracy.csv'):
     with open(file_path, 'r') as csvfile:
@@ -217,7 +231,7 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
 
     test_loss, test_acc = evaluate_val_test_set(model, device, loss_fn, len(test_set), test_loader)
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
-    save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies)
+    save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies,class_color_map)
 
 
 model = UNetPlusPlus()
