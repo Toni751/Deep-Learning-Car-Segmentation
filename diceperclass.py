@@ -1,21 +1,18 @@
 import matplotlib.pyplot as plt
 
-# RGB values for each class
-r_map = {10: 250, 20: 19, 30: 249, 40: 10, 50: 149, 60: 5, 70: 20, 80: 249, 90: 0}
-g_map = {10: 149, 20: 98, 30: 249, 40: 248, 50: 7, 60: 249, 70: 19, 80: 9, 90: 0}
-b_map = {10: 10, 20: 19, 30: 10, 40: 250, 50: 149, 60: 9, 70: 249, 80: 250, 90: 0}
+#I just copy the values to the array, seemed faster and easier
+epoch = 14
+dice_coefficients = [0.9932742118835449, 0.8987556099891663, 0.8870596885681152, 0.6199256777763367, 0.9079620838165283, 0.8739415407180786, 0.7989602088928223, 0.8557553291320801, 0.7858360409736633]
 
-dice_data = [0.977438748, 0.6680240035057068, 0.7045186758041382, 0.29506391286849976, 0.6546423435211182, 0.5845504999160767, 0.4535837173461914, 0.5937840938568115]
-num_classes = len(dice_data)
+# Define the colors corresponding to each class
+colors = [(0, 0, 0), (250, 149, 10), (19, 98, 19), (249, 249, 10), (10, 248, 250), (149, 7, 149), (5, 249, 9), (20, 19, 249), (249, 9, 250)]
 
-# Create a list of colors for each class
-colors = [(r_map[10 * (i + 1)] / 255, g_map[10 * (i + 1)] / 255, b_map[10 * (i + 1)] / 255) for i in range(num_classes)]
-
-plt.figure(figsize=(10, 6))
-bars = plt.bar(range(num_classes), dice_data, color=colors)
-plt.title('Dice Coefficients for Each Class')
+# Plot the column chart
+plt.bar(range(len(dice_coefficients)), dice_coefficients, color=[(r/255, g/255, b/255) for (r, g, b) in colors])
 plt.xlabel('Class')
 plt.ylabel('Dice Coefficient')
-plt.ylim(0, 1)  # Set the y-axis range from 0 to 1
-plt.savefig('dice_coefficients_plot.png')  # Save the plot as an image file
+plt.title(f'Dice Coefficients for Epoch {epoch}')
+
+plt.savefig('dice_coefficients_originalset_epoch_14.png')
 plt.show()
+
