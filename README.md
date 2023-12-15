@@ -1,1 +1,3 @@
-This project presents two deep learning models that are a solution to the problem of image segmentation in the context of car parts, aimed to be used in an insurance context. The project is enhanced with data preprocessing for optimal training and convergence and contains two model architectures: U-Net and U-Net++.
+This project contains three deep learning models that are a solution to the problem of image segmentation in the context of car parts: U-Net, U-Net++ and the FCN ResNet50 pretrained model.
+
+A complete walkthrough of the project is described in the notebook "Car Image Segmentation - Project.ipynb". The other python files mostly contain the code from the notebook split by functionality. To run the notebook you need to download the dataset and the model at the URLs specified in the "Code Resource" chapter in the report.
