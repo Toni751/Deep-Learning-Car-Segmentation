@@ -13,10 +13,10 @@ from unets import UNet, UNetPlusPlus
 import matplotlib.pyplot as plt
 import csv
 
-print("Started running car segmentation model.")
+
 BATCH_SIZE = 32
-# ARRAYS_FOLDER = './arrays_rotated/'
-ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
+ARRAYS_FOLDER = './arrays_rotated/'
+# ARRAYS_FOLDER = 'carseg_data/arrays_rotated/'
 
 image_data_list = []
 target_list = []
@@ -64,6 +64,8 @@ class_color_map = {
     8: (r_map[80], g_map[80], b_map[80]),
     9: (r_map[90], g_map[90], b_map[90]),
 }
+
+
 def save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies, class_color_map, file_path='dices_original.csv'):
     with open(file_path, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
@@ -181,11 +183,6 @@ def evaluate_val_test_set(model, device, loss_fn, set_length, loader):
 
 
 def train_model(model, epochs, optimizer, loss_fn, save_path):
-    if not torch.cuda.is_available():
-        print("CUDA NOT AVAILABLE!!!!")
-    else:
-        print("CUDA WORKING!!!")
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
@@ -226,12 +223,12 @@ def train_model(model, epochs, optimizer, loss_fn, save_path):
 
         scheduler.step()  # Step the learning rate scheduler
 
-    # if save_path is not None:
-    # save_model(model, optimizer, save_path)
+    if save_path is not None:
+        save_model(model, optimizer, save_path)
 
     test_loss, test_acc = evaluate_val_test_set(model, device, loss_fn, len(test_set), test_loader)
     print(f"Test loss: {test_loss}, test accuracy: {test_acc}")
-    save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies,class_color_map)
+    save_loss_accuracy_to_file(train_losses, train_dices, val_losses, val_accuracies, class_color_map)
 
 
 model = UNetPlusPlus()

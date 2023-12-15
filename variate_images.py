@@ -1,18 +1,10 @@
 import numpy as np
 import os
 from scipy.ndimage import rotate
-from PIL import Image
-import shutil
+
 
 ARRAYS_FOLDER = './arrays/'
-LANDSCAPES_FOLDER = './landscapes/'
 ROTATED_FOLDER = './arrays_rotated/'
-r_map = {0: 0, 10: 250, 20: 19, 30: 249, 40: 10, 50: 149, 60: 5, 70: 20, 80: 249, 90: 0}
-g_map = {0: 0, 10: 149, 20: 98, 30: 249, 40: 248, 50: 7, 60: 249, 70: 19, 80: 9, 90: 0}
-b_map = {0: 0, 10: 10, 20: 19, 30: 10, 40: 250, 50: 149, 60: 9, 70: 249, 80: 250, 90: 0}
-
-allowed_mask_values = np.array([0, 10, 20, 30, 40, 50, 60, 70, 80, 90])
-allowed_input_values = np.arange(256)
 
 
 def rotate_images(image, target, angle):
@@ -27,8 +19,7 @@ def mirror_images(image, target):
     return image, target
 
 
-def preprocess_file(files, shouldRotate=False, shouldMirror=False, shouldChangeBackground=False, angle=0):
-    step = 0
+def preprocess_file(files, shouldRotate=False, shouldMirror=False, angle=0):
     for file in files:
         new_file_name = ''
         file_path = os.path.join(ARRAYS_FOLDER, file)
@@ -41,21 +32,11 @@ def preprocess_file(files, shouldRotate=False, shouldMirror=False, shouldChangeB
         original_target = np.expand_dims(original_target, axis=-1)  # Add third dimension to the target
         augmented_target = original_target
 
-        # CAN ONLY BE APPLIED TO BLACK IMAGES !!!!
-        if shouldChangeBackground == True:
-            new_file_name += "background_"
-            # Determine the landscape image filename based on step count
-            landscape_image_filename = f"{step + 1:04d}.jpg"
-            landscape_image_path = os.path.join(LANDSCAPES_FOLDER, landscape_image_filename)
-
-            # Replace black background with the specified landscape image
-            augmented_image_data = replace_black_background(augmented_image_data, landscape_image_path)
-
-        if shouldRotate == True and angle != 0:
+        if shouldRotate and angle != 0:
             new_file_name += "angle_" + str(angle) + "_"
             augmented_image_data, augmented_target = rotate_images(augmented_image_data, augmented_target, angle)
 
-        if shouldMirror == True:
+        if shouldMirror:
             new_file_name += "mirrored_"
             augmented_image_data, augmented_target = mirror_images(augmented_image_data, augmented_target)
 
@@ -64,27 +45,9 @@ def preprocess_file(files, shouldRotate=False, shouldMirror=False, shouldChangeB
         np.save(augmented_file_path, np.concatenate([augmented_image_data, augmented_target], axis=-1))
 
 
-def replace_black_background(image_data, background_image_path):
-    # Load the background image
-    background_image = Image.open(background_image_path)
-
-    # Resize the background image to match the size of the input image
-    background_image = background_image.resize((image_data.shape[1], image_data.shape[0]))
-
-    # Convert the background image to a NumPy array
-    background_array = np.array(background_image)
-
-    # Create a mask for black pixels in the input image
-    black_pixels = (image_data[:, :, 0] == 0) & (image_data[:, :, 1] == 0) & (image_data[:, :, 2] == 0)
-
-    # Replace RGB values for black pixels
-    image_data[black_pixels, :3] = background_array[black_pixels, :3]
-
-    return image_data
-
-
 def getRandomAngles():
     return np.random.choice([45, 90, 135, 180, 225, 270, 315])
+
 
 def preprocess_input():
     black_files = [f for f in os.listdir(ARRAYS_FOLDER) if f.startswith('black_5') and f.endswith('.npy')]

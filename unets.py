@@ -6,7 +6,7 @@ class ConvBlock(nn.Module):
     def __init__(self, in_channels, mid_channels, out_channels):
         super().__init__()
         self.conv_block = nn.Sequential(
-            # We use bias=False because it is somehow cancelled out by the batchnorm
+            # We use bias=False because it is cancelled out by the batchnorm
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
