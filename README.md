@@ -1,1 +1,1 @@
-"# Deep-Learning-Car-Segmentation" 
+This project presents two deep learning models that are a solution to the problem of image segmentation in the context of car parts, aimed to be used in an insurance context. The project is enhanced with data preprocessing for optimal training and convergence and contains two model architectures: U-Net and U-Net++.
